@@ -639,16 +639,23 @@ open class SceneView @JvmOverloads constructor(
     ) {
         // Invert the y coordinate since its origin is at the bottom
         val invertedY = height - 1 - y
+        // Wrap in a try/catch to handle the case where we receive a pick event as the screen is
+        // being swiped to emulate a back button press. In that case, the view will be destroyed but
+        // there is still a possibility of this method being called after the fact but before the
+        // sceneview is fully destroyed which would trigger an IllegalStateException and crash the
+        // app.
+        try {
+            view.pick(x, invertedY, pickingHandler) { pickResult ->
+                val pickedRenderable = pickResult.renderable
+                val pickedNode = allChildren
+                    .mapNotNull { it as? ModelNode }
+                    .firstOrNull { modelNode ->
+                        pickedRenderable in modelNode.renderables
+                    }
+                onPickingCompleted.invoke(pickedNode, pickedRenderable)
+            }
+        } catch (exception: Exception) {}
 
-        view.pick(x, invertedY, pickingHandler) { pickResult ->
-            val pickedRenderable = pickResult.renderable
-            val pickedNode = allChildren
-                .mapNotNull { it as? ModelNode }
-                .firstOrNull { modelNode ->
-                    pickedRenderable in modelNode.renderables
-                }
-            onPickingCompleted.invoke(pickedNode, pickedRenderable)
-        }
     }
 
     fun pickNode(
