@@ -47,7 +47,7 @@ import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node
-import io.github.sceneview.node.ViewNode.WindowManager
+import io.github.sceneview.node.ViewNode2.WindowManager
 import java.util.concurrent.Executors
 
 /**
@@ -239,28 +239,28 @@ open class ARSceneView @JvmOverloads constructor(
      */
     var onSessionUpdated: ((session: Session, frame: Frame) -> Unit)? = null,
 ) : SceneView(
-    context,
-    attrs,
-    defStyleAttr,
-    defStyleRes,
-    sharedEngine,
-    sharedModelLoader,
-    sharedMaterialLoader,
-    sharedEnvironmentLoader,
-    sharedScene,
-    sharedView,
-    sharedRenderer,
-    sharedCameraNode,
-    sharedMainLightNode,
-    sharedEnvironment,
-    isOpaque,
-    sharedCollisionSystem,
-    null,
-    viewNodeWindowManager,
-    onGestureListener,
-    onTouchEvent,
-    sharedActivity,
-    sharedLifecycle
+    context = context,
+    attrs = attrs,
+    defStyleAttr = defStyleAttr,
+    defStyleRes = defStyleRes,
+    sharedEngine = sharedEngine,
+    sharedModelLoader = sharedModelLoader,
+    sharedMaterialLoader = sharedMaterialLoader,
+    sharedEnvironmentLoader = sharedEnvironmentLoader,
+    sharedScene = sharedScene,
+    sharedView = sharedView,
+    sharedRenderer = sharedRenderer,
+    sharedCameraNode = sharedCameraNode,
+    sharedMainLightNode = sharedMainLightNode,
+    sharedEnvironment = sharedEnvironment,
+    isOpaque = isOpaque,
+    sharedCollisionSystem = sharedCollisionSystem,
+    cameraManipulator = null,
+    viewNodeWindowManager = viewNodeWindowManager,
+    onGestureListener = onGestureListener,
+    onTouchEvent = onTouchEvent,
+    sharedActivity = sharedActivity,
+    sharedLifecycle = sharedLifecycle
 ) {
     open val arCore = ARCore(
         onSessionCreated = ::onSessionCreated,

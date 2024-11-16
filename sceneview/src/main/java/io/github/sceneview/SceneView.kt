@@ -6,16 +6,39 @@ import android.media.MediaRecorder
 import android.opengl.EGLContext
 import android.os.Build
 import android.util.AttributeSet
-import android.view.*
+import android.view.Choreographer
+import android.view.MotionEvent
+import android.view.Surface
+import android.view.SurfaceView
+import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.annotation.RequiresApi
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.findFragment
-import androidx.lifecycle.*
-import com.google.android.filament.*
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.findViewTreeLifecycleOwner
+import com.google.android.filament.ColorGrading
+import com.google.android.filament.Colors
+import com.google.android.filament.Engine
+import com.google.android.filament.Fence
+import com.google.android.filament.Filament
+import com.google.android.filament.IndirectLight
+import com.google.android.filament.LightManager
+import com.google.android.filament.MaterialInstance
+import com.google.android.filament.RenderableManager
+import com.google.android.filament.Renderer
+import com.google.android.filament.Scene
+import com.google.android.filament.Skybox
+import com.google.android.filament.SwapChain
+import com.google.android.filament.ToneMapper
 import com.google.android.filament.View
-import com.google.android.filament.View.*
+import com.google.android.filament.View.AntiAliasing
+import com.google.android.filament.View.BlendMode
+import com.google.android.filament.View.QualityLevel
+import com.google.android.filament.Viewport
 import com.google.android.filament.android.DisplayHelper
 import com.google.android.filament.android.UiHelper
 import com.google.android.filament.gltfio.Gltfio
@@ -31,7 +54,6 @@ import io.github.sceneview.gesture.GestureDetector
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.gesture.RotateGestureDetector
 import io.github.sceneview.gesture.ScaleGestureDetector
-import io.github.sceneview.gesture.transform
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
@@ -45,8 +67,12 @@ import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.node.CameraNode
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node
-import io.github.sceneview.node.ViewNode
-import io.github.sceneview.utils.*
+import io.github.sceneview.node.ViewNode2
+import io.github.sceneview.utils.OpenGL
+import io.github.sceneview.utils.SurfaceMirrorer
+import io.github.sceneview.utils.intervalSeconds
+import io.github.sceneview.utils.readBuffer
+import io.github.sceneview.utils.setKeepScreenOn
 
 typealias Entity = Int
 typealias EntityInstance = Int
@@ -169,7 +195,8 @@ open class SceneView @JvmOverloads constructor(
      * supported: ORBIT, MAP, and FREE_FLIGHT. To construct a manipulator instance, the desired mode
      * is passed into the create method.
      */
-    cameraManipulator: Manipulator? = createCameraManipulator(),
+    cameraManipulator: CameraGestureDetector.CameraManipulator? =
+        createDefaultCameraManipulator(sharedCameraNode?.worldPosition),
     /**
      * Used for Node's that can display an Android [View]
      *
@@ -185,7 +212,7 @@ open class SceneView @JvmOverloads constructor(
      * Additionally, this manages the lifecycle of the window to help ensure that the window is
      * added/removed from the WindowManager at the appropriate times.
      */
-    var viewNodeWindowManager: ViewNode.WindowManager? = null,
+    var viewNodeWindowManager: ViewNode2.WindowManager? = null,
     /**
      * The listener invoked for all the gesture detector callbacks.
      *
@@ -196,6 +223,61 @@ open class SceneView @JvmOverloads constructor(
     sharedActivity: ComponentActivity? = null,
     sharedLifecycle: Lifecycle? = null,
 ) : SurfaceView(context, attrs, defStyleAttr, defStyleRes) {
+
+    /** ## Deprecated: Use [CameraGestureDetector.DefaultCameraManipulator]
+     *
+     * Replace `manipulator = Manipulator.Builder().build()` with
+     * `cameraManipulator = CameraGestureDetector.DefaultCameraManipulator(manipulator =
+     * Manipulator.Builder().build())`
+     */
+    @Deprecated("Use CameraGestureDetector.DefaultCameraManipulator")
+    constructor(
+        context: Context,
+        attrs: AttributeSet? = null,
+        defStyleAttr: Int = 0,
+        defStyleRes: Int = 0,
+        sharedEngine: Engine? = null,
+        sharedModelLoader: ModelLoader? = null,
+        sharedMaterialLoader: MaterialLoader? = null,
+        sharedEnvironmentLoader: EnvironmentLoader? = null,
+        sharedScene: Scene? = null,
+        sharedView: View? = null,
+        sharedRenderer: Renderer? = null,
+        sharedCameraNode: CameraNode? = null,
+        sharedMainLightNode: LightNode? = null,
+        sharedEnvironment: Environment? = null,
+        isOpaque: Boolean = true,
+        sharedCollisionSystem: CollisionSystem? = null,
+        manipulator: Manipulator,
+        viewNodeWindowManager: ViewNode2.WindowManager? = null,
+        onGestureListener: GestureDetector.OnGestureListener? = null,
+        onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
+        sharedActivity: ComponentActivity? = null,
+        sharedLifecycle: Lifecycle? = null,
+    ): this (
+        context = context,
+        attrs = attrs,
+        defStyleAttr = defStyleAttr,
+        defStyleRes = defStyleRes,
+        sharedEngine = sharedEngine,
+        sharedModelLoader = sharedModelLoader,
+        sharedMaterialLoader = sharedMaterialLoader,
+        sharedEnvironmentLoader = sharedEnvironmentLoader,
+        sharedScene = sharedScene,
+        sharedView = sharedView,
+        sharedRenderer = sharedRenderer,
+        sharedCameraNode = sharedCameraNode,
+        sharedMainLightNode = sharedMainLightNode,
+        sharedEnvironment = sharedEnvironment,
+        isOpaque = isOpaque,
+        sharedCollisionSystem = sharedCollisionSystem,
+        cameraManipulator = CameraGestureDetector.createDefaultCameraManipulator(manipulator),
+        viewNodeWindowManager = viewNodeWindowManager,
+        onGestureListener = onGestureListener,
+        onTouchEvent = onTouchEvent,
+        sharedActivity = sharedActivity,
+        sharedLifecycle = sharedLifecycle,
+    )
 
     val engine = sharedEngine ?: createEglContext().let {
         defaultEglContext = it
@@ -418,7 +500,7 @@ open class SceneView @JvmOverloads constructor(
         }
 
     var cameraGestureDetector: CameraGestureDetector? =
-        CameraGestureDetector(viewHeight = ::getHeight, manipulator = cameraManipulator)
+        CameraGestureDetector(viewHeight = ::getHeight, cameraManipulator = cameraManipulator)
         private set
 
     /**
@@ -435,10 +517,10 @@ open class SceneView @JvmOverloads constructor(
      * supported: ORBIT, MAP, and FREE_FLIGHT. To construct a manipulator instance, the desired mode
      * is passed into the create method.
      */
-    var cameraManipulator: Manipulator?
-        get() = cameraGestureDetector?.manipulator
+    var cameraManipulator: CameraGestureDetector.CameraManipulator?
+        get() = cameraGestureDetector?.cameraManipulator
         set(value) {
-            cameraGestureDetector?.manipulator = value
+            cameraGestureDetector?.cameraManipulator = value
         }
 
     protected open val activity: ComponentActivity? = sharedActivity
@@ -644,9 +726,11 @@ open class SceneView @JvmOverloads constructor(
 
             // Only update the camera manipulator if a touch has been made
             cameraManipulator?.let { manipulator ->
-                manipulator.update(frameTimeNanos.intervalSeconds(lastFrameTimeNanos).toFloat())
-                // Extract the camera basis from the helper and push it to the Filament camera.
-                cameraNode.transform = manipulator.transform
+                if (lastTouchEvent != null) {
+                    manipulator.update(frameTimeNanos.intervalSeconds(lastFrameTimeNanos).toFloat())
+                    // Extract the camera basis from the helper and push it to the Filament camera.
+                    cameraNode.transform = manipulator.getTransform()
+                }
             }
 
             onFrame?.invoke(frameTimeNanos)
@@ -806,11 +890,6 @@ open class SceneView @JvmOverloads constructor(
         }
     }
 
-//    fun updateCameraManipulator() {
-//        _cameraManipulator = cameraManipulator?.invoke(view, cameraNode)
-//        cameraGestureDetector = _cameraManipulator?.let { CameraGestureDetector(this, it) }
-//    }
-
     private inner class LifeCycleObserver : DefaultLifecycleObserver {
         override fun onResume(owner: LifecycleOwner) {
 
@@ -832,8 +911,6 @@ open class SceneView @JvmOverloads constructor(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 viewNodeWindowManager?.pause()
             }
-
-//            activity?.setKeepScreenOn(false)
         }
 
         override fun onDestroy(owner: LifecycleOwner) {
@@ -880,25 +957,6 @@ open class SceneView @JvmOverloads constructor(
             }
         }
     }
-
-//    inner class CameraGestureListener : CameraGestureDetector.OnCameraGestureListener {
-//
-//        override fun onScroll(x: Int, y: Int, scrollDelta: Float) {
-//            cameraManipulator?.scroll(x, y, scrollDelta)
-//        }
-//
-//        override fun onGrabBegin(x: Int, y: Int, strafe: Boolean) {
-//            cameraManipulator?.grabBegin(x, y, strafe)
-//        }
-//
-//        override fun onGrabUpdate(x: Int, y: Int) {
-//            cameraManipulator?.grabUpdate(x, y)
-//        }
-//
-//        override fun onGrabEnd() {
-//            cameraManipulator?.grabEnd()
-//        }
-//    }
 
     class DefaultCameraNode(engine: Engine) : CameraNode(engine) {
         init {
@@ -989,17 +1047,17 @@ open class SceneView @JvmOverloads constructor(
 
         fun createCameraNode(engine: Engine): CameraNode = DefaultCameraNode(engine)
 
-        fun createCameraManipulator() =
-            Manipulator.Builder()
-//                .orbitHomePosition(cameraNode.worldPosition)
-//                .viewport(min(width, 1), min(height, 1))
-                .orbitSpeed(0.005f, 0.005f)
-                .zoomSpeed(0.05f)
-                .build(Manipulator.Mode.ORBIT)
+        fun createDefaultCameraManipulator(
+            orbitHomePosition: Position? = null,
+            targetPosition: Position? = null
+        ) = CameraGestureDetector.DefaultCameraManipulator(
+            orbitHomePosition = orbitHomePosition,
+            targetPosition = targetPosition
+        )
 
 
         @RequiresApi(Build.VERSION_CODES.P)
-        fun createViewNodeManager(context: Context) = ViewNode.WindowManager(context)
+        fun createViewNodeManager(context: Context) = ViewNode2.WindowManager(context)
 
         fun createMainLightNode(engine: Engine): LightNode = DefaultLightNode(engine)
 

@@ -32,7 +32,6 @@ import io.github.sceneview.collision.TransformProvider
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.gesture.RotateGestureDetector
 import io.github.sceneview.gesture.ScaleGestureDetector
-import io.github.sceneview.gesture.transform
 import io.github.sceneview.managers.getParentOrNull
 import io.github.sceneview.managers.getTransform
 import io.github.sceneview.managers.getWorldTransform
@@ -87,6 +86,11 @@ open class Node(
     TransformProvider {
 
     var isHittable: Boolean = true
+
+    /**
+     * ### Define your own custom name
+     */
+    open var name: String? = null
 
     /**
      * The node can be selected when a touch event happened.
@@ -878,7 +882,9 @@ open class Node(
 
     override fun onMove(detector: MoveGestureDetector, e: MotionEvent): Boolean {
         return if (isPositionEditable) {
-            collisionSystem?.hitTest(e)?.first { it.node == parent }?.let {
+            // Find the hit test location in the parent to place the child at the
+            // corresponding location
+            collisionSystem?.hitTest(e)?.firstOrNull { it.node == parent }?.let {
                 onMove(detector, e, it.worldPosition)
             } ?: false
         } else {

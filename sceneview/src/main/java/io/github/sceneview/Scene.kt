@@ -32,6 +32,7 @@ import dev.romainguy.kotlin.math.Float2
 import io.github.sceneview.collision.CollisionSystem
 import io.github.sceneview.collision.HitResult
 import io.github.sceneview.environment.Environment
+import io.github.sceneview.gesture.CameraGestureDetector
 import io.github.sceneview.gesture.GestureDetector
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.gesture.RotateGestureDetector
@@ -39,12 +40,13 @@ import io.github.sceneview.gesture.ScaleGestureDetector
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.math.Position
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.node.CameraNode
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node
-import io.github.sceneview.node.ViewNode
+import io.github.sceneview.node.ViewNode2
 import io.github.sceneview.utils.destroy
 
 @Composable
@@ -153,11 +155,11 @@ fun Scene(
      * position before any user gesture.
      *
      * Clients notify the camera manipulator of various mouse or touch events, then periodically
-     * call its getLookAt() method so that they can adjust their camera(s). Three modes are
-     * supported: ORBIT, MAP, and FREE_FLIGHT. To construct a manipulator instance, the desired mode
-     * is passed into the create method.
+     * call its getTransform() method so that they can adjust their camera(s).
      */
-    cameraManipulator: Manipulator? = rememberCameraManipulator(),
+    cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator(
+        cameraNode.worldPosition
+    ),
     /**
      * Used for Node's that can display an Android [View]
      *
@@ -173,7 +175,7 @@ fun Scene(
      * Additionally, this manages the lifecycle of the window to help ensure that the window is
      * added/removed from the WindowManager at the appropriate times.
      */
-    viewNodeWindowManager: ViewNode.WindowManager? = null,
+    viewNodeWindowManager: ViewNode2.WindowManager? = null,
     /**
      * The listener invoked for all the gesture detector callbacks.
      *
@@ -253,6 +255,66 @@ fun Scene(
     }
 }
 
+/** ## Deprecated: Use [CameraGestureDetector.DefaultCameraManipulator]
+ *
+ * Replace `manipulator = Manipulator.Builder().build()` with
+ * `cameraManipulator = CameraGestureDetector.DefaultCameraManipulator(manipulator =
+ * Manipulator.Builder().build())`
+ */
+@Composable
+@Deprecated("Use CameraGestureDetector.DefaultCameraManipulator")
+fun Scene(
+    modifier: Modifier = Modifier,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
+    view: View = rememberView(engine),
+    isOpaque: Boolean = true,
+    renderer: Renderer = rememberRenderer(engine),
+    scene: Scene = rememberScene(engine),
+    environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
+    mainLightNode: LightNode? = rememberMainLightNode(engine),
+    cameraNode: CameraNode = rememberCameraNode(engine),
+    childNodes: List<Node> = rememberNodes(),
+    collisionSystem: CollisionSystem = rememberCollisionSystem(view),
+    manipulator: Manipulator,
+    viewNodeWindowManager: ViewNode2.WindowManager? = null,
+    onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
+    onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
+    activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
+    lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+    onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    onViewCreated: (SceneView.() -> Unit)? = null,
+    onViewUpdated: (SceneView.() -> Unit)? = null
+) {
+    Scene(
+        modifier = modifier,
+        engine = engine,
+        modelLoader = modelLoader,
+        materialLoader = materialLoader,
+        environmentLoader = environmentLoader,
+        view = view,
+        isOpaque = isOpaque,
+        renderer = renderer,
+        scene = scene,
+        environment = environment,
+        mainLightNode = mainLightNode,
+        cameraNode = cameraNode,
+        childNodes = childNodes,
+        collisionSystem = collisionSystem,
+        cameraManipulator = CameraGestureDetector.createDefaultCameraManipulator(manipulator),
+        viewNodeWindowManager = viewNodeWindowManager,
+        onGestureListener = onGestureListener,
+        onTouchEvent = onTouchEvent,
+        activity = activity,
+        lifecycle = lifecycle,
+        onFrame = onFrame,
+        onViewCreated = onViewCreated,
+        onViewUpdated = onViewUpdated
+    )
+}
+
 @Composable
 fun rememberEngine(
     eglContextCreator: () -> EGLContext = { SceneView.createEglContext() },
@@ -280,7 +342,8 @@ inline fun <reified T : Node> rememberNode(crossinline creator: () -> T) =
     }
 
 @Composable
-fun rememberNode(engine: Engine) = rememberNode { Node(engine) }
+fun rememberNode(engine: Engine, creator: Node.() -> Unit = {}) =
+    rememberNode { Node(engine).apply(creator) }
 
 @Composable
 fun rememberNodes(creator: MutableList<Node>.() -> Unit = {}) = remember {
@@ -509,8 +572,10 @@ fun rememberOnGestureListener(
 
 @Composable
 fun rememberCameraManipulator(
-    creator: () -> Manipulator = {
-        SceneView.createCameraManipulator()
+    orbitHomePosition: Position? = null,
+    targetPosition: Position? = null,
+    creator: () -> CameraGestureDetector.CameraManipulator = {
+        SceneView.createDefaultCameraManipulator(orbitHomePosition, targetPosition)
     }
 ) = remember(creator).also { collisionSystem ->
     DisposableEffect(collisionSystem) {
@@ -523,7 +588,7 @@ fun rememberCameraManipulator(
 @Composable
 fun rememberViewNodeManager(
     context: Context = LocalContext.current,
-    creator: () -> ViewNode.WindowManager = {
+    creator: () -> ViewNode2.WindowManager = {
         SceneView.createViewNodeManager(context)
     }
 ) = remember(context, creator).also {
